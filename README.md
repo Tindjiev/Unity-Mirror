@@ -13,7 +13,7 @@ Otherwise, the rendering on the mirror glass would appear pixelated on the scree
 * Currently you can't see a mirror from another mirror with the expected results, unless you make it only be visible from a mirror only and make its camera it follow the mirror camera
 * Shrinking doesn't work well if the mirror is rotated around its local z (forward) axis
 
-## Protals
+## Portals
 
 This method will also work for projecting a portal camera.
 It's a bit more complicated to set up but you could try by extending the MirrorCamera class with inside defining a Target Transform and overriding the following methods
