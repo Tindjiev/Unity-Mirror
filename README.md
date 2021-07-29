@@ -1,11 +1,11 @@
 ## How it works
 
 It uses a secondary camera (mirror camera) and projects what it views onto a cube (mirror glass).
-The mirror camera is placed behind the mirror following the Main camera (or the camera the mirror will be visible to).
-Its Projection Matrix set so that the near clipping plane matches exactly the mirror glass surface.
+The mirror camera is placed behind the mirror following the Main camera (or any camera the mirror is planned to be visible to).
+Its Projection Matrix is set so that the near clipping plane matches exactly the mirror glass surface.
 
 When the Main camera gets close to the mirror, the mirror glass shrinks so that it fits the screen almost exactly.
-This happens because otherwise the rendering on the mirror glass gets pixelated. So it's a nice trick to avoid increasing the pixel size of the render texture
+Otherwise, the rendering on the mirror glass would appear pixelated on the screen. So it's a nice trick to avoid increasing the pixel size of the render texture
 
 
 ## Limitations/Issues
@@ -16,26 +16,26 @@ This happens because otherwise the rendering on the mirror glass gets pixelated.
 ## Protals
 
 This method will also work for projecting a portal camera.
-It's a bit more complicated to set up but you could try by extending the MirrorCamera class with inside defining a Target Trasnform and overriding the following methods
+It's a bit more complicated to set up but you could try by extending the MirrorCamera class with inside defining a Target Transform and overriding the following methods
 
 
 ```
     protected override Vector3 SetCameraPositionAndRotation()
     {
-        Quaternion SeeTransformRotation = Target.rotation;
+        Quaternion TargetTransformRotation = _portal.Target.rotation;
 
         Vector3 PositionOnSurface = RenderingSurfaceTransform.position + RenderingSurfaceTransform.lossyScale.z / 2f * RenderingSurfaceTransform.forward;
 
         Vector3 MirrorCameraGlobalPositionBehindRender = RenderingSurfaceTransform.up.Rotate180degAroundAxisNormalized() * (_playerCameraPosition - PositionOnSurface) + PositionOnSurface;
 
-        _cameraSelf.transform.position = SeeTransformRotation * Quaternion.Inverse(RenderingSurfaceTransform.rotation) *
-                                            (MirrorCameraGlobalPositionBehindRender - RenderingSurfaceTransform.position) + Target.position;
+        _cameraSelf.transform.position = TargetTransformRotation * Quaternion.Inverse(RenderingSurfaceTransform.rotation) *
+                                            (MirrorCameraGlobalPositionBehindRender - RenderingSurfaceTransform.position) + _portal.Target.position;
 
-        _cameraSelf.transform.rotation = SeeTransformRotation;
+        _cameraSelf.transform.rotation = TargetTransformRotation;
         return MirrorCameraGlobalPositionBehindRender;
     }
 
-    //this override is needed for shrinking
+    //this override is needed for when shrinking, otherwise the same would apply as with mirror
     protected override void CalculateProjectionMatrixParameters(in Vector3 portalCameraGlobalPositionBehindView, out float left, out float right, out float top, out float bot, out float near, out float far)
     {
         Vector3 MirrorCamera_sub_MirrorGlass = portalCameraGlobalPositionBehindView - RenderingSurfaceTransform.position;
