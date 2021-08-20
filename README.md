@@ -1,3 +1,5 @@
+Download the package through Releases
+
 ## How it works
 
 It uses a secondary camera (mirror camera) and projects what it views onto a cube (mirror glass).
