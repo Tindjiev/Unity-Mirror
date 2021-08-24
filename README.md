@@ -9,7 +9,6 @@ Its Projection Matrix is set so that the near clipping plane matches exactly the
 When the Main camera gets close to the mirror, the mirror glass shrinks so that it fits the screen almost exactly.
 Otherwise, the rendering on the mirror glass would appear pixelated on the screen. So it's a nice trick to avoid increasing the pixel size of the render texture
 
-
 ## Limitations/Issues
 
 * Currently you can't see a mirror from another mirror with the expected results, unless you make it only be visible from a mirror only and make its camera it follow the mirror camera
@@ -63,3 +62,7 @@ It's a bit more complicated to set up but you could try by extending the MirrorC
         far = 100f;
     }
 ```
+
+## Sin/Wave Effects
+
+Just add the unity package with sin effects from Releases or download the files directly and attach to the mirror's camera the corresponding script
