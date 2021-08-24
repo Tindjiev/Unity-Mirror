@@ -228,11 +228,11 @@ public class MirrorCamera : MonoBehaviour
         }
 
         //checking if mirror glass extends out of original size
-        if (Vector3.Dot(mirrorRight, minusSideOfMirror - mirrorPosition) < -_renderingSurfaceGlobalScaleDiv2.x)
+        if (Mathf.Abs(Vector3.Dot(mirrorRight, minusSideOfMirror - mirrorPosition)) > _renderingSurfaceGlobalScaleDiv2.x)
         {
             minusSideOfMirror = mirrorPosition - _renderingSurfaceGlobalScaleDiv2.x * mirrorRight;
         }
-        if (Vector3.Dot(mirrorRight, plusSideOfMirror - mirrorPosition) > _renderingSurfaceGlobalScaleDiv2.x)
+        if (Mathf.Abs(Vector3.Dot(mirrorRight, plusSideOfMirror - mirrorPosition)) > _renderingSurfaceGlobalScaleDiv2.x)
         {
             plusSideOfMirror = mirrorPosition + _renderingSurfaceGlobalScaleDiv2.x * mirrorRight;
         }
@@ -269,11 +269,11 @@ public class MirrorCamera : MonoBehaviour
         }
 
         //checking if mirror glass extends out of original size
-        if (Vector3.Dot(mirrorUp, minusSideOfMirror - mirrorPosition) < -_renderingSurfaceGlobalScaleDiv2.y)
+        if (Mathf.Abs(Vector3.Dot(mirrorUp, minusSideOfMirror - mirrorPosition)) > _renderingSurfaceGlobalScaleDiv2.y)
         {
             minusSideOfMirror = mirrorPosition - _renderingSurfaceGlobalScaleDiv2.y * mirrorUp;
         }
-        if (Vector3.Dot(mirrorUp, plusSideOfMirror - mirrorPosition) > _renderingSurfaceGlobalScaleDiv2.y)
+        if (Mathf.Abs(Vector3.Dot(mirrorUp, plusSideOfMirror - mirrorPosition)) > _renderingSurfaceGlobalScaleDiv2.y)
         {
             plusSideOfMirror = mirrorPosition + _renderingSurfaceGlobalScaleDiv2.y * mirrorUp;
         }
