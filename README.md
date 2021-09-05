@@ -1,18 +1,19 @@
-Download the package through Releases
+Download the unity package from Releases
 
 ## How it works
 
-It uses a secondary camera (mirror camera) and projects what it views onto a cube (mirror glass).
-The mirror camera is placed behind the mirror following the Main camera (or any camera the mirror is planned to be visible to).
+It uses a camera object (mirror camera) and projects what it views onto a cuboid (mirror glass).
+The mirror camera is placed behind the mirror (on the opposite side) following the camera that is currently viewed by.
 Its Projection Matrix is set so that the near clipping plane matches exactly the mirror glass surface.
+For reflections of other mirrors' reflections it generates new cameras, which each one will render a specific reflection
 
-When the Main camera gets close to the mirror, the mirror glass shrinks so that it fits the screen almost exactly.
+When the camera that views the mirror gets close, the mirror "glass" shrinks so that it fits the screen almost exactly.
 Otherwise, the rendering on the mirror glass would appear pixelated on the screen. So it's a nice trick to avoid increasing the pixel size of the render texture
 
 ## Limitations/Issues
 
-* Currently you can't see a mirror from another mirror with the expected results, unless you make it only be visible from a mirror only and make its camera it follow the mirror camera
 * Shrinking doesn't work well if the mirror is rotated around its local z (forward) axis
+* Sin/Wave Effects don't work well with latest upgrade
 
 ## Portals
 
@@ -29,10 +30,10 @@ It's a bit more complicated to set up but you could try by extending the MirrorC
 
         Vector3 MirrorCameraGlobalPositionBehindRender = RenderingSurfaceTransform.up.Rotate180degAroundAxisNormalized() * (_playerCameraPosition - PositionOnSurface) + PositionOnSurface;
 
-        _cameraSelf.transform.position = TargetTransformRotation * Quaternion.Inverse(RenderingSurfaceTransform.rotation) *
+        MirrorCamera.transform.position = TargetTransformRotation * Quaternion.Inverse(RenderingSurfaceTransform.rotation) *
                                             (MirrorCameraGlobalPositionBehindRender - RenderingSurfaceTransform.position) + _portal.Target.position;
 
-        _cameraSelf.transform.rotation = TargetTransformRotation;
+        MirrorCamera.transform.rotation = TargetTransformRotation;
         return MirrorCameraGlobalPositionBehindRender;
     }
 
@@ -63,6 +64,6 @@ It's a bit more complicated to set up but you could try by extending the MirrorC
     }
 ```
 
-## Sin/Wave Effects
+## Sin/Wave Effects (doesn't work on latest release... yet)
 
 Just add the unity package with sin effects from Releases or download the files directly and attach to the mirror's camera the corresponding script

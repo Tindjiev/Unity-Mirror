@@ -41,7 +41,6 @@ GameObject:
   m_Component:
   - component: {fileID: 835666407916162086}
   - component: {fileID: 835666407916162137}
-  - component: {fileID: 8242206605177513827}
   m_Layer: 31
   m_Name: Camera
   m_TagString: Untagged
@@ -70,7 +69,7 @@ Camera:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 835666407916162139}
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 2
   m_ClearFlags: 1
   m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
@@ -106,27 +105,6 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
---- !u!114 &8242206605177513827
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 835666407916162139}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d021f451e82df744997f8c82aa6c4f5d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  <Material>k__BackingField: {fileID: 0}
-  _playerCamera: {fileID: 0}
-  <RenderingSurfaceTransform>k__BackingField: {fileID: 835666407487694146}
-  <MirrorGlassRenderer>k__BackingField: {fileID: 4981021482193690136}
-  <XPixels>k__BackingField: 1920
-  <YPixels>k__BackingField: 1080
-  StopRenderWhenNotViewed: 1
-  StopRenderWhenPlayerCamIsBehind: 1
-  ShrinkWhenPlayerCamGetsClose: 1
 --- !u!1 &6213068938570189610
 GameObject:
   m_ObjectHideFlags: 0
@@ -182,6 +160,7 @@ GameObject:
   - component: {fileID: 1664559685521325720}
   - component: {fileID: 7954516193287719009}
   - component: {fileID: 4981021482193690136}
+  - component: {fileID: 2106510247757101768}
   m_Layer: 31
   m_Name: glass render
   m_TagString: Untagged
@@ -252,6 +231,26 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &2106510247757101768
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6218369720218243645}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d18f4b451c2a34842ab13348e811d692, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  <MirrorCamera>k__BackingField: {fileID: 835666407916162137}
+  <RenderingSurfaceTransform>k__BackingField: {fileID: 835666407487694146}
+  <MirrorGlassRenderer>k__BackingField: {fileID: 4981021482193690136}
+  <XPixels>k__BackingField: 1920
+  <YPixels>k__BackingField: 1080
+  StopRenderWhenNotViewed: 1
+  StopRenderWhenPlayerCamIsBehind: 1
+  ShrinkWhenPlayerCamGetsClose: 1
 --- !u!1 &8544073436668826193
 GameObject:
   m_ObjectHideFlags: 0
