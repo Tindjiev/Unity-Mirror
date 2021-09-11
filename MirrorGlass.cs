@@ -5,7 +5,7 @@ using UnityEngine;
 public class MirrorGlass : MonoBehaviour
 {
 
-    #region ReferencesToOtherObjects
+    #region References to other Objects
 
     [field: SerializeField]
     public Camera MirrorCamera { get; private set; }
@@ -16,11 +16,14 @@ public class MirrorGlass : MonoBehaviour
     [field: SerializeField]
     public MeshRenderer MirrorGlassRenderer { get; private set; }
 
-    #endregion ReferencesToOtherObjects
+    [SerializeField]
+    private Material _noReflectionMaterial;
+
+    #endregion References to other Objects
 
 
 
-    #region ControlVariables
+    #region Control variables
 
     [field: SerializeField, ReadOnlyOnInspectorDuringPlay]
     public int XPixels { get; private set; } = 1920;
@@ -32,78 +35,90 @@ public class MirrorGlass : MonoBehaviour
     public bool StopRenderWhenPlayerCamIsBehind = true;
     public bool ShrinkWhenPlayerCamGetsClose = true;
 
-    #endregion ControlVariables
+    #endregion Control variables
 
 
 
-    #region VariablesThatStoreInfo
+    #region Variables that store info
 
     protected Vector3 _originalLocalPosition { get; private set; }
     protected Vector3 _originalLocalScale { get; private set; }
 
     protected Vector3 _playerCameraPosition { get; private set; }
     protected Vector3 _renderingSurfaceGlobalScaleDiv2 { get; private set; }
-    protected float _forwardDistanceToPlayerCamFromGlass { get; private set; }
-    protected float _upDistanceToPlayerCamFromGlass { get; private set; }
-    protected float _rightDistanceToPlayerCamFromGlass { get; private set; }
+    protected float _forwardDistanceToPlayerCamFromGlassCentre { get; private set; }
+    protected float _upDistanceToPlayerCamFromGlassCentre { get; private set; }
+    protected float _rightDistanceToPlayerCamFromGlassCentre { get; private set; }
 
 
-    #endregion VariablesThatStoreInfo
+    #endregion Variables that store info
 
 
 
-    #region ShrinkedPublicValues
+    #region PreRender Event Function Delegate declaration
 
-    public float ShrinkedScaleRatioX => RenderingSurfaceTransform.localScale.x / _originalLocalScale.x;
-    public float ShrinkedScaleRatioY => RenderingSurfaceTransform.localScale.y / _originalLocalScale.y;
-    public float PositionChangeRatioX => (RenderingSurfaceTransform.localPosition.x - _originalLocalPosition.x) / _originalLocalScale.x;
-    public float PositionChangeRatioY => (RenderingSurfaceTransform.localPosition.y - _originalLocalPosition.y) / _originalLocalScale.y;
+    public delegate void FuncCameraAnd2Vectors(Camera camera, in Vector2 shrinkedScaleRatio, in Vector2 positionChangeRatio);
+    protected FuncCameraAnd2Vectors _preRender;
 
-    #endregion ShrinkedPublicValues
+    #endregion PreRender Event Function Delegate declaration
 
-    Material _Black;
 
-    private Dictionary<RenderTexture, UsageAndTime> _renderTexturesBeingUsed = new Dictionary<RenderTexture, UsageAndTime>();
-    private Dictionary<Camera, UsageAndTime> _camerasUsed = new Dictionary<Camera, UsageAndTime>();
+
+    #region Dictionaries of UsageAndTime
+
+    protected Dictionary<RenderTexture, UsageAndTime> _renderTexturesBeingUsed = new Dictionary<RenderTexture, UsageAndTime>();
+    protected Dictionary<Camera, UsageAndTime> _mirrorCameras = new Dictionary<Camera, UsageAndTime>();
+
+    #endregion Dictionaries of UsageAndTime
+
+
+
+    #region Static Variables
+
+    private static int _timeRecursed = 0;
+    public static int MaximumRecursions = 5;
+
+    #endregion Static Variables
+
+
+
+    static MirrorGlass()
+    {
+        Camera.onPreRender += SetFromMirrorGlassInfo;
+        Camera.onPostRender += ResetAndClearMirrorGlassInfo;
+    }
 
     protected void Awake()
     {
-        _Black = new Material(Shader.Find("Mirror/Black"));
+        if (!_noReflectionMaterial) _noReflectionMaterial = new Material(Shader.Find("Mirror/Black"));
+
         _originalLocalPosition = RenderingSurfaceTransform.localPosition;
         _originalLocalScale = RenderingSurfaceTransform.localScale;
 
-        if (MirrorGlassRenderer.sharedMaterial == null)
-        {
-            MirrorGlassRenderer.sharedMaterial = new Material(Shader.Find("Mirror/MirrorShader"));
-        }
-        if (MirrorCamera.targetTexture == null)
-        {
-            RenderTexture newTargetTexture = new RenderTexture(XPixels, YPixels, 32);
-            MirrorCamera.targetTexture = newTargetTexture;
-            MirrorGlassRenderer.material.mainTexture = newTargetTexture;
-        }
+        if (!MirrorGlassRenderer.sharedMaterial) MirrorGlassRenderer.sharedMaterial = new Material(Shader.Find("Mirror/MirrorShader"));
+        if (!MirrorCamera.targetTexture) MirrorCamera.targetTexture = new RenderTexture(XPixels, YPixels, 32);
+        MirrorGlassRenderer.sharedMaterial.mainTexture = MirrorCamera.targetTexture;
+
         _renderTexturesBeingUsed.Add(MirrorCamera.targetTexture, new UsageAndTime(false, float.PositiveInfinity));
-        _camerasUsed.Add(MirrorCamera, new UsageAndTime(false, float.PositiveInfinity));
+        _mirrorCameras.Add(MirrorCamera, new UsageAndTime(false, float.PositiveInfinity));
     }
 
-    //private static List<Camera> _camerasBeingRenderedRightNow = new List<Camera>();
-    private static int _timeRecursed = 0;
-    public static int MAXIMUM_RECURSIONS = 5;
+
+
     protected void OnWillRenderObject()
     {
 #if UNITY_EDITOR
         if (Camera.current.name == "SceneCamera" || Camera.current.name == "Preview Camera") return;
 #endif
 
-        if (_camerasUsed.ContainsKey(Camera.current)) return;
-
+        if (_mirrorCameras.ContainsKey(Camera.current)) return; // skip rendering caused by own MirrorCameras
 
         //RenderingSurfaceTransform.localPosition = _originalLocalPosition;
         //RenderingSurfaceTransform.localScale = _originalLocalScale;
 
-        if (_timeRecursed > MAXIMUM_RECURSIONS)
+        if (_timeRecursed > MaximumRecursions)
         {
-            Graphics.Blit(MirrorCamera.targetTexture, MirrorCamera.targetTexture, _Black);
+            Graphics.Blit(MirrorCamera.targetTexture, MirrorCamera.targetTexture, _noReflectionMaterial);
             return;
         }
 
@@ -111,13 +126,9 @@ public class MirrorGlass : MonoBehaviour
 
 
         Camera originalMirrorCamera = MirrorCamera;
-        UsageAndTime usageAndTime = _camerasUsed[MirrorCamera];
-        //if (_camerasBeingRenderedRightNow.Contains(MirrorCamera))
-        if (usageAndTime)
-        {
-            MirrorCamera = FindOrGenerateCamera();
-            //MirrorCamera = SetNewCamera();
-        }
+        UsageAndTime mirrorCameraIsUsed = _mirrorCameras[MirrorCamera];
+
+        if (mirrorCameraIsUsed) MirrorCamera = FindOrGenerateCamera();
 
         SetAndRenderMirrorCamera();
 
@@ -132,89 +143,80 @@ public class MirrorGlass : MonoBehaviour
     private void SetAndRenderMirrorCamera()
     {
 
-        #region PrepareVariables
-
-        //start with original position and scale
+        #region Prepare variables
 
         _renderingSurfaceGlobalScaleDiv2 = RenderingSurfaceTransform.lossyScale / 2f;
 
-        Vector3 mirrorPosition = RenderingSurfaceTransform.position;
+        Vector3 mirrorGlassPosition = RenderingSurfaceTransform.position;
         Vector3 mirrorForward = RenderingSurfaceTransform.forward;
         Vector3 mirrorRight = RenderingSurfaceTransform.right;
         Vector3 mirrorUp = RenderingSurfaceTransform.up;
 
         _playerCameraPosition = Camera.current.transform.position;
 
-        Vector3 playerCameraPosition_sub_CentrePointOnMirrorGlass = _playerCameraPosition - (mirrorPosition + _renderingSurfaceGlobalScaleDiv2.z * mirrorForward);
-        _forwardDistanceToPlayerCamFromGlass = Vector3.Dot(mirrorForward, playerCameraPosition_sub_CentrePointOnMirrorGlass);
-        _rightDistanceToPlayerCamFromGlass = Vector3.Dot(mirrorRight, playerCameraPosition_sub_CentrePointOnMirrorGlass);
-        _upDistanceToPlayerCamFromGlass = Vector3.Dot(mirrorUp, playerCameraPosition_sub_CentrePointOnMirrorGlass);
+        //assuming that mirrorGlassPosition is the centre of the mirrorGlass cuboid
+        Vector3 playerCameraPosition_sub_CentrePointOnMirrorGlass = _playerCameraPosition - (mirrorGlassPosition + _renderingSurfaceGlobalScaleDiv2.z * mirrorForward);
+        _forwardDistanceToPlayerCamFromGlassCentre = Vector3.Dot(mirrorForward, playerCameraPosition_sub_CentrePointOnMirrorGlass);
+        _rightDistanceToPlayerCamFromGlassCentre = Vector3.Dot(mirrorRight, playerCameraPosition_sub_CentrePointOnMirrorGlass);
+        _upDistanceToPlayerCamFromGlassCentre = Vector3.Dot(mirrorUp, playerCameraPosition_sub_CentrePointOnMirrorGlass);
 
-        #endregion PrepareVariables
+        #endregion Prepare variables
 
 
 
-        if (StopRenderWhenPlayerCamIsBehind && _forwardDistanceToPlayerCamFromGlass <= -0.1f)
-        {
-            //Debug.Log("@@@@ Camera NOT2 rendered: " + MirrorCamera.name, MirrorCamera);
-            //Debug.Log("@@@@ By: " + Camera.current.name, Camera.current);
-            MirrorCamera.enabled = false;
-            return;
-        }
+        if (StopRenderWhenPlayerCamIsBehind && _forwardDistanceToPlayerCamFromGlassCentre <= -0.1f) return;
+
+
 
         Vector3 mirrorCameraGlobalPosition = SetCameraPositionAndRotation();
 
 
 
-        #region PrepareCornernPoints
+        #region Prepare cornern points of MirrorGlass
 
         //left from the prespective of player (so its to the mirror's right)
-        Vector3 leftTopPoint_MinusPlayCamPos = mirrorPosition
+        Vector3 leftTopPoint_MinusPlayCamPos = mirrorGlassPosition
                                                  + mirrorForward * _renderingSurfaceGlobalScaleDiv2.z
                                                  + mirrorRight * _renderingSurfaceGlobalScaleDiv2.x
                                                  + mirrorUp * _renderingSurfaceGlobalScaleDiv2.y
                                                  - _playerCameraPosition;
 
 
-        Vector3 leftBotPoint_MinusPlayCamPos = mirrorPosition
+        Vector3 leftBotPoint_MinusPlayCamPos = mirrorGlassPosition
                                                  + mirrorForward * _renderingSurfaceGlobalScaleDiv2.z
                                                  + mirrorRight * _renderingSurfaceGlobalScaleDiv2.x
                                                  - mirrorUp * _renderingSurfaceGlobalScaleDiv2.y
                                                  - _playerCameraPosition;
 
 
-        Vector3 rightTopPoint_MinusPlayCamPos = mirrorPosition
+        Vector3 rightTopPoint_MinusPlayCamPos = mirrorGlassPosition
                                                  + mirrorForward * _renderingSurfaceGlobalScaleDiv2.z
                                                  - mirrorRight * _renderingSurfaceGlobalScaleDiv2.x
                                                  + mirrorUp * _renderingSurfaceGlobalScaleDiv2.y
                                                  - _playerCameraPosition;
 
 
-        Vector3 rightBotPoint_MinusPlayCamPos = mirrorPosition
+        Vector3 rightBotPoint_MinusPlayCamPos = mirrorGlassPosition
                                                  + mirrorForward * _renderingSurfaceGlobalScaleDiv2.z
                                                  - mirrorRight * _renderingSurfaceGlobalScaleDiv2.x
                                                  - mirrorUp * _renderingSurfaceGlobalScaleDiv2.y
                                                  - _playerCameraPosition;
-        #endregion PrepareCornernPoints
+
+        #endregion Prepare cornern points of MirrorGlass
 
 
 
-        //todo: swap corner points so they better match camera and mirror orientation around its local z (forward) axis
+        //todo in the future: swap corner points so they better match camera and mirror orientation around its local z (forward) axis
 
 
 
         CalculateOutWardVerticalVectorsOfViewFrustum(Camera.current, out Vector3 rightRight, out Vector3 leftLeft, out Vector3 botDown, out Vector3 topUp, out Vector3 cameraForward, out float near);
 
         //checking if mirror is out of view frustum
-        if (CheckForOutOfView(
-            CheckIfSquareIsOutOfViewFrustum(leftTopPoint_MinusPlayCamPos, rightTopPoint_MinusPlayCamPos, rightBotPoint_MinusPlayCamPos, leftBotPoint_MinusPlayCamPos,
+        if (FullCheckForOutOfView(
+            CheckIfSquareIsOutOfFrustum(leftTopPoint_MinusPlayCamPos, rightTopPoint_MinusPlayCamPos, rightBotPoint_MinusPlayCamPos, leftBotPoint_MinusPlayCamPos,
                                             topUp, rightRight, botDown, leftLeft, cameraForward, near)))
-        {
-            //Debug.Log("@@@@ Camera NOT1 rendered: " + MirrorCamera.name, MirrorCamera);
-            //Debug.Log("@@@@ By: " + Camera.current.name, Camera.current);
-            MirrorCamera.enabled = false;
             return;
-        }
 
 
 
@@ -225,13 +227,15 @@ public class MirrorGlass : MonoBehaviour
         }
 
 
-        #region MirrorShrink
-        //now that mirror is not out of view, it will be shrinked in case part of it is out of view frustum
+
+        #region Mirror shrink
+
+        //now that thw mirror is not out of view, it will be shrinked in case part of it is out of view frustum
 
         //checking for horizontal sides out of view
 
-        Vector3 minusSideOfMirror = mirrorPosition - mirrorRight * _renderingSurfaceGlobalScaleDiv2.x;
-        Vector3 plusSideOfMirror = mirrorPosition + mirrorRight * _renderingSurfaceGlobalScaleDiv2.x;
+        Vector3 minusSideOfMirror = mirrorGlassPosition - mirrorRight * _renderingSurfaceGlobalScaleDiv2.x;
+        Vector3 plusSideOfMirror = mirrorGlassPosition + mirrorRight * _renderingSurfaceGlobalScaleDiv2.x;
 
 
         //right side of screen
@@ -255,13 +259,13 @@ public class MirrorGlass : MonoBehaviour
         }
 
         //checking if mirror glass extends out of original size in left-right axis
-        if (Mathf.Abs(Vector3.Dot(mirrorRight, minusSideOfMirror - mirrorPosition)) > _renderingSurfaceGlobalScaleDiv2.x)
+        if (Mathf.Abs(Vector3.Dot(mirrorRight, minusSideOfMirror - mirrorGlassPosition)) > _renderingSurfaceGlobalScaleDiv2.x)
         {
-            minusSideOfMirror = mirrorPosition - _renderingSurfaceGlobalScaleDiv2.x * mirrorRight;
+            minusSideOfMirror = mirrorGlassPosition - _renderingSurfaceGlobalScaleDiv2.x * mirrorRight;
         }
-        if (Mathf.Abs(Vector3.Dot(mirrorRight, plusSideOfMirror - mirrorPosition)) > _renderingSurfaceGlobalScaleDiv2.x)
+        if (Mathf.Abs(Vector3.Dot(mirrorRight, plusSideOfMirror - mirrorGlassPosition)) > _renderingSurfaceGlobalScaleDiv2.x)
         {
-            plusSideOfMirror = mirrorPosition + _renderingSurfaceGlobalScaleDiv2.x * mirrorRight;
+            plusSideOfMirror = mirrorGlassPosition + _renderingSurfaceGlobalScaleDiv2.x * mirrorRight;
         }
 
         SetNewTransformScaleAndPositionXAxis(RenderingSurfaceTransform, minusSideOfMirror, plusSideOfMirror);
@@ -270,8 +274,8 @@ public class MirrorGlass : MonoBehaviour
 
         //checking for vertical sides out of view
 
-        minusSideOfMirror = mirrorPosition - mirrorUp * _renderingSurfaceGlobalScaleDiv2.y;
-        plusSideOfMirror = mirrorPosition + mirrorUp * _renderingSurfaceGlobalScaleDiv2.y;
+        minusSideOfMirror = mirrorGlassPosition - mirrorUp * _renderingSurfaceGlobalScaleDiv2.y;
+        plusSideOfMirror = mirrorGlassPosition + mirrorUp * _renderingSurfaceGlobalScaleDiv2.y;
 
 
         //top side of screen
@@ -295,23 +299,27 @@ public class MirrorGlass : MonoBehaviour
         }
 
         //checking if mirror glass extends out of original size in up-down axis
-        if (Mathf.Abs(Vector3.Dot(mirrorUp, minusSideOfMirror - mirrorPosition)) > _renderingSurfaceGlobalScaleDiv2.y)
+        if (Mathf.Abs(Vector3.Dot(mirrorUp, minusSideOfMirror - mirrorGlassPosition)) > _renderingSurfaceGlobalScaleDiv2.y)
         {
-            minusSideOfMirror = mirrorPosition - _renderingSurfaceGlobalScaleDiv2.y * mirrorUp;
+            minusSideOfMirror = mirrorGlassPosition - _renderingSurfaceGlobalScaleDiv2.y * mirrorUp;
         }
-        if (Mathf.Abs(Vector3.Dot(mirrorUp, plusSideOfMirror - mirrorPosition)) > _renderingSurfaceGlobalScaleDiv2.y)
+        if (Mathf.Abs(Vector3.Dot(mirrorUp, plusSideOfMirror - mirrorGlassPosition)) > _renderingSurfaceGlobalScaleDiv2.y)
         {
-            plusSideOfMirror = mirrorPosition + _renderingSurfaceGlobalScaleDiv2.y * mirrorUp;
+            plusSideOfMirror = mirrorGlassPosition + _renderingSurfaceGlobalScaleDiv2.y * mirrorUp;
         }
 
         SetNewTransformScaleAndPositionYAxis(RenderingSurfaceTransform, minusSideOfMirror, plusSideOfMirror);
 
-        #endregion MirrorShrink
+        #endregion Mirror shrink
 
 
 
         CalculateAndSetProjectionMatrixAndRenderCamera(mirrorCameraGlobalPosition);
     }
+
+
+
+    #region Prepare variables functions
 
     private static void CalculateOutWardVerticalVectorsOfViewFrustum(Camera camera, out Vector3 rightRight, out Vector3 leftLeft, out Vector3 botDown, out Vector3 topUp, out Vector3 currentCameraForward, out float near)
     {
@@ -347,19 +355,38 @@ public class MirrorGlass : MonoBehaviour
         return MirrorCameraGlobalPositionBehindRender;
     }
 
-    private bool CheckForOutOfView(bool isMirrorOutOfView)
-        =>
-        StopRenderWhenNotViewed &&
-        isMirrorOutOfView &&
-        (
-        _forwardDistanceToPlayerCamFromGlass >= 0.5f ||
-        Mathf.Abs(_rightDistanceToPlayerCamFromGlass) > _renderingSurfaceGlobalScaleDiv2.x ||
-        Mathf.Abs(_upDistanceToPlayerCamFromGlass) > _renderingSurfaceGlobalScaleDiv2.y
-        );
+    #endregion Prepare variables functions
 
 
 
-    #region CameraRenderFunctions
+    #region Smaller camera render functions
+
+    private RenderTexture FindOrGenerateTexture()
+    {
+        foreach (var pair in _renderTexturesBeingUsed)
+        {
+            if (!pair.Value) return pair.Key;
+        }
+        RenderTexture newTexture = new RenderTexture(MirrorCamera.targetTexture);
+        UsageAndTime usageAndTime = new UsageAndTime(false);
+        _renderTexturesBeingUsed.Add(newTexture, usageAndTime);
+        StartCoroutine(CheckTimeForDestroyRenderTexture(newTexture, usageAndTime));
+        return newTexture;
+    }
+
+    private Camera FindOrGenerateCamera()
+    {
+        foreach (var pair in _mirrorCameras)
+        {
+            if (!pair.Value) return pair.Key;
+        }
+        GameObject cameraHolder = Instantiate(MirrorCamera.gameObject, MirrorCamera.transform.parent);
+        Camera tempCamera = cameraHolder.GetComponent<Camera>();
+        UsageAndTime usageAndTime = new UsageAndTime(false);
+        _mirrorCameras.Add(tempCamera, usageAndTime);
+        StartCoroutine(CheckTimeForDestroyCamera(tempCamera, usageAndTime));
+        return tempCamera;
+    }
 
     protected virtual void CalculateProjectionMatrixParameters(in Vector3 mirrorCameraGlobalPositionBehindView, out float left, out float right, out float top, out float bot, out float near, out float far)
     {
@@ -402,121 +429,33 @@ public class MirrorGlass : MonoBehaviour
 
         Camera currentCamera = Camera.current;
 
-        if (!_sizes.ContainsKey(currentCamera)) _sizes[currentCamera] = new List<MirrorGlassRenderInfo>();
+        if (!_mirrorGlassRenderInfosPerCamera.ContainsKey(currentCamera)) _mirrorGlassRenderInfosPerCamera[currentCamera] = new List<MirrorGlassRenderInfo>();
         MirrorGlassRenderInfo mirrorGlassInfo = new MirrorGlassRenderInfo(RenderingSurfaceTransform);
-        _sizes[currentCamera].Add(mirrorGlassInfo);
+        _mirrorGlassRenderInfosPerCamera[currentCamera].Add(mirrorGlassInfo);
+
+
+        RenderTexture texture = FindOrGenerateTexture();
+        if (MirrorCamera.targetTexture != texture) MirrorCamera.targetTexture = texture;
+        InvokePreRenderEvents(MirrorCamera);
+
         RenderingSurfaceTransform.localPosition = _originalLocalPosition;
         RenderingSurfaceTransform.localScale = _originalLocalScale;
 
-        //var projectionMatrix = currentCamera.projectionMatrix;
-        //var camposition = currentCamera.transform.localPosition;
-        //var camrotation = currentCamera.transform.localRotation;
-
-        var texture = FindOrGenerateTexture();
-        MirrorCamera.targetTexture = texture;
-
-        //Debug.Log("Camera rendered: " + MirrorCamera.name, MirrorCamera);
-        //Debug.Log("By: " + Camera.current.name, Camera.current);
-        //_camerasBeingRenderedRightNow.Add(MirrorCamera);
-        //Debug.Log(_renderTexturesBeingUsed.Count);
-        _camerasUsed[MirrorCamera].Use();
+        _mirrorCameras[MirrorCamera].Use();
         MirrorCamera.Render();
-        _camerasUsed[MirrorCamera].UnUse();
-        //_camerasBeingRenderedRightNow.Remove(MirrorCamera);
+        _mirrorCameras[MirrorCamera].UnUse();
 
         var usageAndTime = _renderTexturesBeingUsed[texture];
         usageAndTime.Use();
         mirrorGlassInfo.SetTexture(MirrorGlassRenderer.sharedMaterial, texture, usageAndTime);
-
-
-        //currentCamera.transform.localPosition = camposition;
-        //currentCamera.transform.localRotation = camrotation;
-        //if (currentCamera.projectionMatrix != projectionMatrix)
-        //{
-        //    currentCamera.projectionMatrix = projectionMatrix;
-        //}
     }
 
-    private RenderTexture FindOrGenerateTexture()
-    {
-        foreach(var pair in _renderTexturesBeingUsed)
-        {
-            if (!pair.Value) return pair.Key;
-        }
-        RenderTexture newTexture = new RenderTexture(MirrorCamera.targetTexture);
-        UsageAndTime usageAndTime = new UsageAndTime(false);
-        _renderTexturesBeingUsed.Add(newTexture, usageAndTime);
-        StartCoroutine(CheckTimeForDestroyRenderTexture(newTexture, usageAndTime));
-        return newTexture;
-    }
-    private Camera FindOrGenerateCamera()
-    {
-        foreach(var pair in _camerasUsed)
-        {
-            if (!pair.Value) return pair.Key;
-        }
-        GameObject cameraHolder = Instantiate(MirrorCamera.gameObject, MirrorCamera.transform.parent);
-        Camera tempCamera = cameraHolder.GetComponent<Camera>();
-        UsageAndTime usageAndTime = new UsageAndTime(false);
-        _camerasUsed.Add(tempCamera, usageAndTime);
-        StartCoroutine(CheckTimeForDestroyCamera(tempCamera, usageAndTime));
-        return tempCamera;
-    }
 
-    private Camera SetNewCamera()
-    {
-        GameObject cameraHolder = new GameObject("temp camera");
-        cameraHolder.transform.parent = MirrorCamera.transform.parent;
-        Camera tempCamera = cameraHolder.AddComponent<Camera>();
-        tempCamera.enabled = false;
-        tempCamera.targetTexture = MirrorCamera.targetTexture;
-
-        DesotryAtEndOfFrame(cameraHolder);
-
-        return tempCamera;
-    }
-
-    //private Texture StorePixelsOfRenderTexture(RenderTexture renderTexture)
-    //{
-    //    Texture storingTexture = new RenderTexture(renderTexture);
-    //    Graphics.CopyTexture(renderTexture, storingTexture);
-    //    return storingTexture;
-    //}
-
-    //private void LoadPixelsOfRenderTexture(RenderTexture renderTexture, Texture TextureToLoadFrom)
-    //{
-    //    Graphics.CopyTexture(TextureToLoadFrom, renderTexture);
-    //}
-
-    //private static Vector3 NUKE_POSITION => new Vector3(1024f * 8f, 1024f * 8f, 1024f * 8f);
-    //private Camera _cameraToNotRender;
-    //private Vector3 _originalPositionOfRenderer;
-    //private void DontRenderThisObjectThisFrameByThisCamera(Camera cameraToNotRender)
-    //{
-    //    _originalPositionOfRenderer = MirrorGlassRenderer.transform.position;
-    //    MirrorGlassRenderer.transform.position = NUKE_POSITION;
-    //    //MirrorGlassRenderer.enabled = false;
-    //    _cameraToNotRender = cameraToNotRender;
-    //    Camera.onPostRender += CameraToNotRenderOnPostRender;
-    //}
-
-    //private void CameraToNotRenderOnPostRender(Camera cameraToNotRender)
-    //{
-    //    if (cameraToNotRender != _cameraToNotRender) return;
-
-    //    Debug.Log("object visible again", this);
-    //    MirrorGlassRenderer.transform.position = _originalPositionOfRenderer;
-    //    //MirrorGlassRenderer.enabled = true;
-    //    _cameraToNotRender = null;
-    //    Camera.onPostRender -= CameraToNotRenderOnPostRender;
-    //}
-
-
-    #endregion CameraRenderFunctions
+    #endregion Smaller camera render functions
 
 
 
-    #region TransformResizeFunctions
+    #region Transform resize functions
 
     private void SetNewTransformScaleAndPositionXAxis(Transform transform, in Vector3 globalPointLeft, in Vector3 globalPointRight)
     {
@@ -549,13 +488,24 @@ public class MirrorGlass : MonoBehaviour
 
     }
 
-    #endregion TransformResizeFunctions
+    #endregion Transform resize functions
 
 
 
-    #region MathFunctions
+    private bool FullCheckForOutOfView(bool isMirrorOutOfView)
+        =>
+        StopRenderWhenNotViewed &&
+        isMirrorOutOfView &&
+        (
+        _forwardDistanceToPlayerCamFromGlassCentre >= 0.5f ||
+        Mathf.Abs(_rightDistanceToPlayerCamFromGlassCentre) > _renderingSurfaceGlobalScaleDiv2.x ||
+        Mathf.Abs(_upDistanceToPlayerCamFromGlassCentre) > _renderingSurfaceGlobalScaleDiv2.y
+        );
+
+    #region Math functions
+
     //corner points must be subbed with _playreCamerPosition for the conditions to work. Assuming that, the planes pass through 0
-    private static bool CheckIfSquareIsOutOfViewFrustum(in Vector3 leftTopPoint, in Vector3 rightTopPoint, in Vector3 rightBotPoint, in Vector3 leftBotPoint,
+    private static bool CheckIfSquareIsOutOfFrustum(in Vector3 leftTopPoint, in Vector3 rightTopPoint, in Vector3 rightBotPoint, in Vector3 leftBotPoint,
                                                  in Vector3 topVerticalVector, in Vector3 rightVerticalVector, in Vector3 botVerticalVector, in Vector3 leftVerticalVector,
                                                  in Vector3 cameraForward, float near)
     =>
@@ -631,11 +581,186 @@ public class MirrorGlass : MonoBehaviour
         //return LineDirection * t + LinePoint1;
     }
 
-#endregion MathFunctions
+#endregion Math functions
 
 
 
-#region ReadOnlyAttributeDeclaration
+    #region UsageAndTimeRelated
+    protected class UsageAndTime
+    {
+        private bool _used;
+        private float _timeLastUsed;
+        private float _timeLimit;
+        public UsageAndTime(bool used, float timeLimit = 10f)
+        {
+            _used = used;
+            _timeLastUsed = Time.time;
+            _timeLimit = timeLimit;
+        }
+
+        public static implicit operator bool(UsageAndTime x) => x._used;
+
+        public void Use()
+        {
+            _used = true;
+            _timeLastUsed = Time.time;
+        }
+        public void UnUse()
+        {
+            _used = false;
+        }
+
+        public float TimeRemaining => _timeLimit - (Time.time - _timeLastUsed);
+        public bool CheckIfTimesUp => Time.time - _timeLastUsed > _timeLimit;
+    }
+
+    protected IEnumerator CheckTimeForDestroyRenderTexture(RenderTexture texture, UsageAndTime usageAndTime)
+    {
+        if(usageAndTime.TimeRemaining == float.PositiveInfinity) yield break;
+        while (true)
+        {
+            yield return new WaitForSecondsRealtime(usageAndTime.TimeRemaining);
+            yield return new WaitForEndOfFrame();
+            if (usageAndTime.CheckIfTimesUp) //in case its has been postponed
+            {
+                _renderTexturesBeingUsed.Remove(texture);
+                Destroy(texture);
+                yield break;
+            }
+        }
+    }
+
+    protected IEnumerator CheckTimeForDestroyCamera(Camera camera, UsageAndTime usageAndTime)
+    {
+        if (usageAndTime.TimeRemaining == float.PositiveInfinity) yield break; 
+        while (true)
+        {
+            yield return new WaitForSecondsRealtime(usageAndTime.TimeRemaining);
+            yield return new WaitForEndOfFrame();
+            if (usageAndTime.CheckIfTimesUp) //in case its has been postponed
+            {
+                _mirrorCameras.Remove(camera);
+                _mirrorGlassRenderInfosPerCamera.Remove(camera);
+                Destroy(camera.gameObject);
+                yield break;
+            }
+        }
+    }
+
+    #endregion UsageAndTimeRelated
+
+
+
+    #region PreRender Event related functions
+
+    public void AddMirrorGlassPreRenderEvent(FuncCameraAnd2Vectors function) => _preRender += function;
+    public void RemoveMirrorGlassPreRenderEvent(FuncCameraAnd2Vectors function) => _preRender -= function;
+
+    private void InvokePreRenderEvents(Camera camera)
+    {
+        Vector2 shrinkedScaleRatio =
+            new Vector2(RenderingSurfaceTransform.localScale.x / _originalLocalScale.x, RenderingSurfaceTransform.localScale.y / _originalLocalScale.y);
+        Vector2 positionChangeRatio =
+            new Vector2((RenderingSurfaceTransform.localPosition.x - _originalLocalPosition.x) / _originalLocalScale.x, (RenderingSurfaceTransform.localPosition.y - _originalLocalPosition.y) / _originalLocalScale.y);
+
+        _preRender?.Invoke(camera, shrinkedScaleRatio, positionChangeRatio);
+    }
+
+    #endregion PreRender Event related functions
+
+
+
+    #region Rendering cameras PreRender and PostRender with MirrorGlassInfo
+
+    protected class MirrorGlassRenderInfo
+    {
+        public readonly Transform Transform;
+        public Material MirrorMaterial;
+        public Texture Texture;
+        public UsageAndTime TextureBeingUsed;
+        public Vector3 Position, Scale;
+
+        public MirrorGlassRenderInfo(Transform transform)
+        {
+            Transform = transform;
+            Position = transform.localPosition;
+            Scale = transform.localScale;
+        }
+
+        public void SetTexture(Material mirrorMaterial, Texture texture, UsageAndTime textureHasBeenUsed)
+        {
+            MirrorMaterial = mirrorMaterial;
+            Texture = texture;
+            TextureBeingUsed = textureHasBeenUsed;
+        }
+
+        public void UseInfo()
+        {
+            var tempVector3 = Transform.localPosition;
+            Transform.localPosition = Position;
+            Position = tempVector3;
+
+            tempVector3 = Transform.localScale;
+            Transform.localScale = Scale;
+            Scale = tempVector3;
+
+            if (MirrorMaterial.mainTexture != Texture)
+            {
+                var tempTexture = MirrorMaterial.mainTexture;
+                MirrorMaterial.mainTexture = Texture;
+                Texture = tempTexture;
+            }
+        }
+        public void ResetInfo()
+        {
+            Transform.localPosition = Position;
+            Transform.localScale = Scale;
+
+            if (MirrorMaterial.mainTexture != Texture) MirrorMaterial.mainTexture = Texture;
+            TextureBeingUsed.UnUse();
+        }
+    }
+
+    protected static Dictionary<Camera, List<MirrorGlassRenderInfo>> _mirrorGlassRenderInfosPerCamera = new Dictionary<Camera, List<MirrorGlassRenderInfo>>();
+
+
+
+    protected static void SetFromMirrorGlassInfo(Camera currentCamera)
+    {
+        if (!_mirrorGlassRenderInfosPerCamera.ContainsKey(currentCamera)) return;
+
+        foreach(var mirrorGlassRenderInfo in _mirrorGlassRenderInfosPerCamera[currentCamera])
+        {
+            mirrorGlassRenderInfo.UseInfo();
+        }
+    }
+
+    protected static void ResetAndClearMirrorGlassInfo(Camera currentCamera)
+    {
+        if (!_mirrorGlassRenderInfosPerCamera.ContainsKey(currentCamera)) return;
+
+        foreach(var mirrorGlassRenderInfo in _mirrorGlassRenderInfosPerCamera[currentCamera])
+        {
+            mirrorGlassRenderInfo.ResetInfo();
+        }
+        _mirrorGlassRenderInfosPerCamera[currentCamera].Clear();
+    }
+
+    #endregion Rendering cameras PreRender and PostRender with MirrorGlassInfo
+
+
+
+    #region Inspector Editor
+
+    [UnityEditor.CustomEditor(typeof(MirrorGlass), true), UnityEditor.CanEditMultipleObjects]
+    private class MirrorGlassEditor : UnityEditor.Editor
+    {
+        public override void OnInspectorGUI()
+        {
+            base.OnInspectorGUI();
+            MaximumRecursions = UnityEditor.EditorGUILayout.IntField("Maximum recursions of reflection", MaximumRecursions);
+        }
+    }
 
     private class ReadOnlyOnInspectorDuringPlay : PropertyAttribute { }
     [UnityEditor.CustomPropertyDrawer(typeof(ReadOnlyOnInspectorDuringPlay))]
@@ -656,160 +781,8 @@ public class MirrorGlass : MonoBehaviour
         }
     }
 
-#endregion ReadOnlyAttributeDeclaration
+    #endregion Inspector Editor
 
 
-    private void DesotryAtEndOfFrame(UnityEngine.Object objectToBeDestroyed)
-    {
-        StartCoroutine(DesotryAtEndOfFrameIterator(objectToBeDestroyed));
-    }
-
-    private IEnumerator DesotryAtEndOfFrameIterator(UnityEngine.Object objectToBeDestroyed)
-    {
-        yield return new WaitForEndOfFrame();
-        Destroy(objectToBeDestroyed);
-    }
-
-    private IEnumerator CheckTimeForDestroyRenderTexture(RenderTexture texture, UsageAndTime usageAndTime)
-    {
-        if(usageAndTime.TimeRemaining == float.PositiveInfinity) yield break;
-        while (true)
-        {
-            yield return new WaitForSecondsRealtime(usageAndTime.TimeRemaining);
-            yield return new WaitForEndOfFrame();
-            if (usageAndTime.CheckIfTimesUp)
-            {
-                _renderTexturesBeingUsed.Remove(texture);
-                Destroy(texture);
-                yield break;
-            }
-        }
-    }
-
-    private IEnumerator CheckTimeForDestroyCamera(Camera camera, UsageAndTime usageAndTime)
-    {
-        if(usageAndTime.TimeRemaining == float.PositiveInfinity) yield break;
-        while (true)
-        {
-            yield return new WaitForSecondsRealtime(usageAndTime.TimeRemaining);
-            yield return new WaitForEndOfFrame();
-            if (usageAndTime.CheckIfTimesUp)
-            {
-                _camerasUsed.Remove(camera);
-                Destroy(camera.gameObject);
-                yield break;
-            }
-        }
-    }
-
-    private class UsageAndTime
-    {
-        private bool _used;
-        private float _timeLastUsed;
-        private float _timeLimit;
-        public UsageAndTime(bool used, float timeLimit = 10f)
-        {
-            _used = used;
-            _timeLastUsed = Time.time;
-            _timeLimit = timeLimit;
-        }
-
-        //public static implicit operator UsageAndTime(bool x) => new UsageAndTime(x);
-        public static implicit operator bool(UsageAndTime x) => x._used;
-
-        public void Use()
-        {
-            _used = true;
-            _timeLastUsed = Time.time;
-        }
-        public void UnUse()
-        {
-            _used = false;
-        }
-
-        public float TimeRemaining => _timeLimit - (Time.time - _timeLastUsed);
-        public bool CheckIfTimesUp => Time.time - _timeLastUsed > _timeLimit;
-    }
-
-    private class MirrorGlassRenderInfo
-    {
-        public readonly Transform Transform;
-        public Material MirrorMaterial;
-        public Texture Texture;
-        public UsageAndTime TextureBeingUsed;
-        public Vector3 Position, Scale;
-
-        public MirrorGlassRenderInfo(Transform transform)
-        {
-            Transform = transform;
-            Position = transform.localPosition;
-            Scale = transform.localScale;
-
-        }
-
-        public void SetTexture(Material mirrorMaterial, Texture texture, UsageAndTime textureHasBeenUsed)
-        {
-            MirrorMaterial = mirrorMaterial;
-            Texture = texture;
-            TextureBeingUsed = textureHasBeenUsed;
-        }
-
-        public void PreRender()
-        {
-            var tempVector3 = Transform.localPosition;
-            Transform.localPosition = Position;
-            Position = tempVector3;
-
-            tempVector3 = Transform.localScale;
-            Transform.localScale = Scale;
-            Scale = tempVector3;
-
-            if (MirrorMaterial.mainTexture != Texture)
-            {
-                var tempTexture = MirrorMaterial.mainTexture;
-                MirrorMaterial.mainTexture = Texture;
-                Texture = tempTexture;
-            }
-        }
-        public void PostRender()
-        {
-            Transform.localPosition = Position;
-            Transform.localScale = Scale;
-
-            if (MirrorMaterial.mainTexture != Texture)
-                MirrorMaterial.mainTexture = Texture;
-            TextureBeingUsed.UnUse();
-        }
-    }
-
-    private static Dictionary<Camera, List<MirrorGlassRenderInfo>> _sizes = new Dictionary<Camera, List<MirrorGlassRenderInfo>>();
-
-    private static void SetSizesAndTextures(Camera currentCamera)
-    {
-        //if (!_sizes.ContainsKey(currentCamera) || _sizes[currentCamera] == null) return;
-        if (!_sizes.ContainsKey(currentCamera)) return;
-
-        foreach(var size in _sizes[currentCamera])
-        {
-            size.PreRender();
-        }
-    }
-    private static void ResetSizesAndTextures(Camera currentCamera)
-    {
-        //if (!_sizes.ContainsKey(currentCamera) || _sizes[currentCamera] == null) return;
-        if (!_sizes.ContainsKey(currentCamera)) return;
-
-        foreach(var size in _sizes[currentCamera])
-        {
-            size.PostRender();
-        }
-        _sizes[currentCamera].Clear();
-    }
-
-    static MirrorGlass()
-    {
-        Camera.onPreRender += SetSizesAndTextures;
-        Camera.onPostRender += ResetSizesAndTextures;
-    }
 
 }

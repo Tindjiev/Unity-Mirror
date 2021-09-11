@@ -13,7 +13,6 @@ Otherwise, the rendering on the mirror glass would appear pixelated on the scree
 ## Limitations/Issues
 
 * Shrinking doesn't work well if the mirror is rotated around its local z (forward) axis
-* Sin/Wave Effects don't work well with latest upgrade
 
 ## Portals
 
@@ -64,6 +63,7 @@ It's a bit more complicated to set up but you could try by extending the MirrorC
     }
 ```
 
-## Sin/Wave Effects (doesn't work on latest release... yet)
+## Sin/Wave Effects
 
-Just add the unity package with sin effects from Releases or download the files directly and attach to the mirror's camera the corresponding script
+Just add the unity package with sin effects from Releases or download the files directly
+Just attach the corresponding script to the mirror's camera to apply the effect
