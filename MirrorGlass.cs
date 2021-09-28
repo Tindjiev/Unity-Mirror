@@ -17,7 +17,11 @@ public class MirrorGlass : MonoBehaviour
     public MeshRenderer MirrorGlassRenderer { get; private set; }
 
     [SerializeField]
-    private Material _noReflectionMaterial;
+    protected Shader _mirrorShader;
+    [SerializeField]
+    protected Material _noReflectionMaterial;
+    [SerializeField]
+    protected Shader _noReflectionShader;
 
     #endregion References to other Objects
 
@@ -35,6 +39,11 @@ public class MirrorGlass : MonoBehaviour
     public bool StopRenderWhenPlayerCamIsBehind = true;
     public bool ShrinkWhenPlayerCamGetsClose = true;
 
+    public bool CustomCameraFarDistance = false;
+
+    [SerializeField, HideInInspector]
+    public float CameraFarDistance = 100f;
+
     #endregion Control variables
 
 
@@ -44,7 +53,7 @@ public class MirrorGlass : MonoBehaviour
     protected Vector3 _originalLocalPosition { get; private set; }
     protected Vector3 _originalLocalScale { get; private set; }
 
-    protected Vector3 _playerCameraPosition { get; private set; }
+    protected Vector3 _currentCameraPosition { get; private set; }
     protected Vector3 _renderingSurfaceGlobalScaleDiv2 { get; private set; }
     protected float _forwardDistanceToPlayerCamFromGlassCentre { get; private set; }
     protected float _upDistanceToPlayerCamFromGlassCentre { get; private set; }
@@ -76,9 +85,14 @@ public class MirrorGlass : MonoBehaviour
     #region Static Variables
 
     private static int _timeRecursed = 0;
-    public static int MaximumRecursions = 5;
+    public static int MaximumRecursions = 7;
 
     #endregion Static Variables
+
+
+
+    // skip rendering caused by own MirrorCameras
+    protected virtual bool _skipRender => _mirrorCameras.ContainsKey(Camera.current);
 
 
 
@@ -90,14 +104,14 @@ public class MirrorGlass : MonoBehaviour
 
     protected void Awake()
     {
-        if (!_noReflectionMaterial) _noReflectionMaterial = new Material(Shader.Find("Mirror/Black"));
+        if (!_noReflectionMaterial) _noReflectionMaterial = new Material(_noReflectionShader ? _noReflectionShader : Shader.Find("Mirror/Black"));
 
         _originalLocalPosition = RenderingSurfaceTransform.localPosition;
         _originalLocalScale = RenderingSurfaceTransform.localScale;
 
-        if (!MirrorGlassRenderer.sharedMaterial) MirrorGlassRenderer.sharedMaterial = new Material(Shader.Find("Mirror/MirrorShader"));
+        if (!MirrorGlassRenderer.sharedMaterial) MirrorGlassRenderer.sharedMaterial = new Material(_mirrorShader ? _mirrorShader : Shader.Find("Mirror/MirrorShader"));
         if (!MirrorCamera.targetTexture) MirrorCamera.targetTexture = new RenderTexture(XPixels, YPixels, 32);
-        MirrorGlassRenderer.sharedMaterial.mainTexture = MirrorCamera.targetTexture;
+        MirrorGlassRenderer.material.mainTexture = MirrorCamera.targetTexture;
 
         _renderTexturesBeingUsed.Add(MirrorCamera.targetTexture, new UsageAndTime(false, float.PositiveInfinity));
         _mirrorCameras.Add(MirrorCamera, new UsageAndTime(false, float.PositiveInfinity));
@@ -111,10 +125,7 @@ public class MirrorGlass : MonoBehaviour
         if (Camera.current.name == "SceneCamera" || Camera.current.name == "Preview Camera") return;
 #endif
 
-        if (_mirrorCameras.ContainsKey(Camera.current)) return; // skip rendering caused by own MirrorCameras
-
-        //RenderingSurfaceTransform.localPosition = _originalLocalPosition;
-        //RenderingSurfaceTransform.localScale = _originalLocalScale;
+        if (_skipRender) return; 
 
         if (_timeRecursed > MaximumRecursions)
         {
@@ -148,15 +159,15 @@ public class MirrorGlass : MonoBehaviour
         _renderingSurfaceGlobalScaleDiv2 = RenderingSurfaceTransform.lossyScale / 2f;
 
         Vector3 mirrorGlassPosition = RenderingSurfaceTransform.position;
-        Vector3 mirrorForward = RenderingSurfaceTransform.forward;
         Vector3 mirrorRight = RenderingSurfaceTransform.right;
         Vector3 mirrorUp = RenderingSurfaceTransform.up;
 
-        _playerCameraPosition = Camera.current.transform.position;
+        _currentCameraPosition = Camera.current.transform.position;
 
-        //assuming that mirrorGlassPosition is the centre of the mirrorGlass cuboid
-        Vector3 playerCameraPosition_sub_CentrePointOnMirrorGlass = _playerCameraPosition - (mirrorGlassPosition + _renderingSurfaceGlobalScaleDiv2.z * mirrorForward);
-        _forwardDistanceToPlayerCamFromGlassCentre = Vector3.Dot(mirrorForward, playerCameraPosition_sub_CentrePointOnMirrorGlass);
+        //assuming that mirrorGlassPosition is in the bot of the mirrorGlass surface
+        Vector3 playerCameraPosition_sub_CentrePointOnMirrorGlass = _currentCameraPosition - mirrorGlassPosition;
+
+        _forwardDistanceToPlayerCamFromGlassCentre = Vector3.Dot(RenderingSurfaceTransform.forward, playerCameraPosition_sub_CentrePointOnMirrorGlass);
         _rightDistanceToPlayerCamFromGlassCentre = Vector3.Dot(mirrorRight, playerCameraPosition_sub_CentrePointOnMirrorGlass);
         _upDistanceToPlayerCamFromGlassCentre = Vector3.Dot(mirrorUp, playerCameraPosition_sub_CentrePointOnMirrorGlass);
 
@@ -172,37 +183,33 @@ public class MirrorGlass : MonoBehaviour
 
 
 
-        #region Prepare cornern points of MirrorGlass
+        #region Calculate cornern points of MirrorGlass
 
         //left from the prespective of player (so its to the mirror's right)
-        Vector3 leftTopPoint_MinusPlayCamPos = mirrorGlassPosition
-                                                 + mirrorForward * _renderingSurfaceGlobalScaleDiv2.z
+        Vector3 leftTopPoint_MinusCurrentCamPos = mirrorGlassPosition
                                                  + mirrorRight * _renderingSurfaceGlobalScaleDiv2.x
                                                  + mirrorUp * _renderingSurfaceGlobalScaleDiv2.y
-                                                 - _playerCameraPosition;
+                                                 - _currentCameraPosition;
 
 
-        Vector3 leftBotPoint_MinusPlayCamPos = mirrorGlassPosition
-                                                 + mirrorForward * _renderingSurfaceGlobalScaleDiv2.z
+        Vector3 leftBotPoint_MinusCurrentCamPos = mirrorGlassPosition
                                                  + mirrorRight * _renderingSurfaceGlobalScaleDiv2.x
                                                  - mirrorUp * _renderingSurfaceGlobalScaleDiv2.y
-                                                 - _playerCameraPosition;
+                                                 - _currentCameraPosition;
 
 
-        Vector3 rightTopPoint_MinusPlayCamPos = mirrorGlassPosition
-                                                 + mirrorForward * _renderingSurfaceGlobalScaleDiv2.z
+        Vector3 rightTopPoint_MinusCurrentCamPos = mirrorGlassPosition
                                                  - mirrorRight * _renderingSurfaceGlobalScaleDiv2.x
                                                  + mirrorUp * _renderingSurfaceGlobalScaleDiv2.y
-                                                 - _playerCameraPosition;
+                                                 - _currentCameraPosition;
 
 
-        Vector3 rightBotPoint_MinusPlayCamPos = mirrorGlassPosition
-                                                 + mirrorForward * _renderingSurfaceGlobalScaleDiv2.z
+        Vector3 rightBotPoint_MinusCurrentCamPos = mirrorGlassPosition
                                                  - mirrorRight * _renderingSurfaceGlobalScaleDiv2.x
                                                  - mirrorUp * _renderingSurfaceGlobalScaleDiv2.y
-                                                 - _playerCameraPosition;
+                                                 - _currentCameraPosition;
 
-        #endregion Prepare cornern points of MirrorGlass
+        #endregion Calculate cornern points of MirrorGlass
 
 
 
@@ -214,7 +221,7 @@ public class MirrorGlass : MonoBehaviour
 
         //checking if mirror is out of view frustum
         if (FullCheckForOutOfView(
-            CheckIfSquareIsOutOfFrustum(leftTopPoint_MinusPlayCamPos, rightTopPoint_MinusPlayCamPos, rightBotPoint_MinusPlayCamPos, leftBotPoint_MinusPlayCamPos,
+            CheckIfSquareIsOutOfFrustum(leftTopPoint_MinusCurrentCamPos, rightTopPoint_MinusCurrentCamPos, rightBotPoint_MinusCurrentCamPos, leftBotPoint_MinusCurrentCamPos,
                                             topUp, rightRight, botDown, leftLeft, cameraForward, near)))
             return;
 
@@ -222,7 +229,7 @@ public class MirrorGlass : MonoBehaviour
 
         if (!ShrinkWhenPlayerCamGetsClose)
         {
-            CalculateAndSetProjectionMatrixAndRenderCamera(mirrorCameraGlobalPosition);
+            RenderMirrorCamera(mirrorCameraGlobalPosition);
             return;
         }
 
@@ -239,23 +246,23 @@ public class MirrorGlass : MonoBehaviour
 
 
         //right side of screen
-        if (Vector3.Dot(rightRight, rightTopPoint_MinusPlayCamPos) > 0f || Vector3.Dot(rightRight, rightBotPoint_MinusPlayCamPos) > 0f)
+        if (Vector3.Dot(rightRight, rightTopPoint_MinusCurrentCamPos) > 0f || Vector3.Dot(rightRight, rightBotPoint_MinusCurrentCamPos) > 0f)
         {
 
-            Vector3 pointBot = FindLinePiercingPlanePoint(rightBotPoint_MinusPlayCamPos, leftBotPoint_MinusPlayCamPos, rightRight);
-            Vector3 pointTop = FindLinePiercingPlanePoint(rightTopPoint_MinusPlayCamPos, leftTopPoint_MinusPlayCamPos, rightRight);
+            Vector3 pointBot = FindLinePiercingPlanePoint(rightBotPoint_MinusCurrentCamPos, leftBotPoint_MinusCurrentCamPos, rightRight);
+            Vector3 pointTop = FindLinePiercingPlanePoint(rightTopPoint_MinusCurrentCamPos, leftTopPoint_MinusCurrentCamPos, rightRight);
 
-            minusSideOfMirror = _playerCameraPosition + (Vector3.Dot(mirrorRight, pointBot - pointTop) < 0f ? pointBot : pointTop); //mirrorRight points to left side of screen
+            minusSideOfMirror = _currentCameraPosition + (Vector3.Dot(mirrorRight, pointBot - pointTop) < 0f ? pointBot : pointTop); //mirrorRight points to left side of screen
         }
 
         //left side of screen
-        if (Vector3.Dot(leftLeft, leftTopPoint_MinusPlayCamPos) > 0f || Vector3.Dot(leftLeft, leftBotPoint_MinusPlayCamPos) > 0f)
+        if (Vector3.Dot(leftLeft, leftTopPoint_MinusCurrentCamPos) > 0f || Vector3.Dot(leftLeft, leftBotPoint_MinusCurrentCamPos) > 0f)
         {
 
-            Vector3 pointBot = FindLinePiercingPlanePoint(rightBotPoint_MinusPlayCamPos, leftBotPoint_MinusPlayCamPos, leftLeft);
-            Vector3 pointTop = FindLinePiercingPlanePoint(rightTopPoint_MinusPlayCamPos, leftTopPoint_MinusPlayCamPos, leftLeft);
+            Vector3 pointBot = FindLinePiercingPlanePoint(rightBotPoint_MinusCurrentCamPos, leftBotPoint_MinusCurrentCamPos, leftLeft);
+            Vector3 pointTop = FindLinePiercingPlanePoint(rightTopPoint_MinusCurrentCamPos, leftTopPoint_MinusCurrentCamPos, leftLeft);
 
-            plusSideOfMirror = _playerCameraPosition + (Vector3.Dot(mirrorRight, pointBot - pointTop) > 0f ? pointBot : pointTop); //mirrorRight points to left side of screen
+            plusSideOfMirror = _currentCameraPosition + (Vector3.Dot(mirrorRight, pointBot - pointTop) > 0f ? pointBot : pointTop); //mirrorRight points to left side of screen
         }
 
         //checking if mirror glass extends out of original size in left-right axis
@@ -279,23 +286,23 @@ public class MirrorGlass : MonoBehaviour
 
 
         //top side of screen
-        if (Vector3.Dot(topUp, leftTopPoint_MinusPlayCamPos) > 0f || Vector3.Dot(topUp, rightTopPoint_MinusPlayCamPos) > 0f)
+        if (Vector3.Dot(topUp, leftTopPoint_MinusCurrentCamPos) > 0f || Vector3.Dot(topUp, rightTopPoint_MinusCurrentCamPos) > 0f)
         {
-            Vector3 pointRight = FindLinePiercingPlanePoint(rightTopPoint_MinusPlayCamPos, rightBotPoint_MinusPlayCamPos, topUp);
-            Vector3 pointLeft = FindLinePiercingPlanePoint(leftTopPoint_MinusPlayCamPos, leftBotPoint_MinusPlayCamPos, topUp);
+            Vector3 pointRight = FindLinePiercingPlanePoint(rightTopPoint_MinusCurrentCamPos, rightBotPoint_MinusCurrentCamPos, topUp);
+            Vector3 pointLeft = FindLinePiercingPlanePoint(leftTopPoint_MinusCurrentCamPos, leftBotPoint_MinusCurrentCamPos, topUp);
 
-            plusSideOfMirror = _playerCameraPosition + (Vector3.Dot(mirrorUp, pointRight - pointLeft) > 0f ? pointRight : pointLeft);
+            plusSideOfMirror = _currentCameraPosition + (Vector3.Dot(mirrorUp, pointRight - pointLeft) > 0f ? pointRight : pointLeft);
         }
 
 
         //bot side of screen
-        if (Vector3.Dot(botDown, leftBotPoint_MinusPlayCamPos) > 0f || Vector3.Dot(botDown, rightBotPoint_MinusPlayCamPos) > 0f)
+        if (Vector3.Dot(botDown, leftBotPoint_MinusCurrentCamPos) > 0f || Vector3.Dot(botDown, rightBotPoint_MinusCurrentCamPos) > 0f)
         {
 
-            Vector3 pointRight = FindLinePiercingPlanePoint(rightTopPoint_MinusPlayCamPos, rightBotPoint_MinusPlayCamPos, botDown);
-            Vector3 pointLeft = FindLinePiercingPlanePoint(leftTopPoint_MinusPlayCamPos, leftBotPoint_MinusPlayCamPos, botDown);
+            Vector3 pointRight = FindLinePiercingPlanePoint(rightTopPoint_MinusCurrentCamPos, rightBotPoint_MinusCurrentCamPos, botDown);
+            Vector3 pointLeft = FindLinePiercingPlanePoint(leftTopPoint_MinusCurrentCamPos, leftBotPoint_MinusCurrentCamPos, botDown);
 
-            minusSideOfMirror = _playerCameraPosition + (Vector3.Dot(mirrorUp, pointRight - pointLeft) < 0f ? pointRight : pointLeft);
+            minusSideOfMirror = _currentCameraPosition + (Vector3.Dot(mirrorUp, pointRight - pointLeft) < 0f ? pointRight : pointLeft);
         }
 
         //checking if mirror glass extends out of original size in up-down axis
@@ -314,7 +321,7 @@ public class MirrorGlass : MonoBehaviour
 
 
 
-        CalculateAndSetProjectionMatrixAndRenderCamera(mirrorCameraGlobalPosition);
+        RenderMirrorCamera(mirrorCameraGlobalPosition);
     }
 
 
@@ -347,8 +354,8 @@ public class MirrorGlass : MonoBehaviour
         Vector3 mirrorForward = RenderingSurfaceTransform.forward;
 
         Vector3 MirrorCameraGlobalPositionBehindRender =
-            _playerCameraPosition -
-            2f * (Vector3.Dot(mirrorForward, _playerCameraPosition - RenderingSurfaceTransform.position) - _renderingSurfaceGlobalScaleDiv2.z) * mirrorForward;
+            _currentCameraPosition -
+            2f * Vector3.Dot(mirrorForward, _currentCameraPosition - RenderingSurfaceTransform.position) * mirrorForward;
 
         MirrorCamera.transform.position = MirrorCameraGlobalPositionBehindRender;
         MirrorCamera.transform.localRotation = Quaternion.identity;
@@ -359,20 +366,7 @@ public class MirrorGlass : MonoBehaviour
 
 
 
-    #region Smaller camera render functions
-
-    private RenderTexture FindOrGenerateTexture()
-    {
-        foreach (var pair in _renderTexturesBeingUsed)
-        {
-            if (!pair.Value) return pair.Key;
-        }
-        RenderTexture newTexture = new RenderTexture(MirrorCamera.targetTexture);
-        UsageAndTime usageAndTime = new UsageAndTime(false);
-        _renderTexturesBeingUsed.Add(newTexture, usageAndTime);
-        StartCoroutine(CheckTimeForDestroyRenderTexture(newTexture, usageAndTime));
-        return newTexture;
-    }
+    #region Render functions
 
     private Camera FindOrGenerateCamera()
     {
@@ -388,20 +382,80 @@ public class MirrorGlass : MonoBehaviour
         return tempCamera;
     }
 
+    private RenderTexture FindOrGenerateTexture(out UsageAndTime usageAndTime)
+    {
+        foreach (var pair in _renderTexturesBeingUsed)
+        {
+            if (!pair.Value)
+            {
+                usageAndTime = pair.Value;
+                return pair.Key;
+            }
+        }
+        RenderTexture newTexture = new RenderTexture(MirrorCamera.targetTexture);
+        usageAndTime = new UsageAndTime(false);
+        _renderTexturesBeingUsed.Add(newTexture, usageAndTime);
+        StartCoroutine(CheckTimeForDestroyRenderTexture(newTexture, usageAndTime));
+        return newTexture;
+    }
+
+    private void RenderMirrorCamera(in Vector3 mirrorCameraGlobalPositionBehindView)
+    {
+        CalculateAndSetProjectionMatrix(mirrorCameraGlobalPositionBehindView);
+
+        Camera currentCamera = Camera.current;
+
+        if (!_mirrorGlassRenderInfosPerCamera.ContainsKey(currentCamera)) _mirrorGlassRenderInfosPerCamera[currentCamera] = new List<MirrorGlassRenderInfo>();
+        MirrorGlassRenderInfo mirrorGlassInfo = new MirrorGlassRenderInfo(RenderingSurfaceTransform);
+        _mirrorGlassRenderInfosPerCamera[currentCamera].Add(mirrorGlassInfo);
+
+        RenderTexture texture = FindOrGenerateTexture(out UsageAndTime usageAndTimeOfRenderTexture);
+        if (MirrorCamera.targetTexture != texture) MirrorCamera.targetTexture = texture;
+
+        InvokePreRenderEvents(MirrorCamera);
+
+        RenderingSurfaceTransform.localPosition = _originalLocalPosition;
+        RenderingSurfaceTransform.localScale = _originalLocalScale;
+
+
+        UsageAndTime usageAndTimeOfCamera = _mirrorCameras[MirrorCamera];
+        usageAndTimeOfCamera.Use();
+        MirrorCamera.Render();
+        usageAndTimeOfCamera.UnUse();
+
+        usageAndTimeOfRenderTexture.Use();
+        mirrorGlassInfo.SetTexture(MirrorGlassRenderer.material, texture, usageAndTimeOfRenderTexture);
+    }
+
+    private void CalculateAndSetProjectionMatrix(in Vector3 mirrorCameraGlobalPositionBehindView)
+    {
+        CalculateProjectionMatrixParameters(mirrorCameraGlobalPositionBehindView, out var left, out var right, out var top, out var bot, out var near, out var far);
+        SetProjectionMatrix(left, right, bot, top, near, far);
+    }
+
     protected virtual void CalculateProjectionMatrixParameters(in Vector3 mirrorCameraGlobalPositionBehindView, out float left, out float right, out float top, out float bot, out float near, out float far)
     {
-        Vector3 MirrorCamera_sub_MirrorGlass = mirrorCameraGlobalPositionBehindView - RenderingSurfaceTransform.position;
-        float rightDist = Vector3.Dot(RenderingSurfaceTransform.right, MirrorCamera_sub_MirrorGlass);
-        float upDist = Vector3.Dot(RenderingSurfaceTransform.up, MirrorCamera_sub_MirrorGlass);
-        float forwardDist = Vector3.Dot(RenderingSurfaceTransform.forward, MirrorCamera_sub_MirrorGlass);
+        Vector3 mirrorCamera_sub_MirrorGlass = mirrorCameraGlobalPositionBehindView - RenderingSurfaceTransform.position;
+        float rightDist = Vector3.Dot(RenderingSurfaceTransform.right, mirrorCamera_sub_MirrorGlass);
+        float upDist = Vector3.Dot(RenderingSurfaceTransform.up, mirrorCamera_sub_MirrorGlass);
+        float forwardDist = Vector3.Dot(RenderingSurfaceTransform.forward, mirrorCamera_sub_MirrorGlass);
         Vector3 scaleDiv2 = RenderingSurfaceTransform.lossyScale / 2f;
+
         left = -scaleDiv2.x - rightDist;
         right = scaleDiv2.x - rightDist;
         top = scaleDiv2.y - upDist;
         bot = -scaleDiv2.y - upDist;
-        near = scaleDiv2.z - forwardDist;
-        far = 1000f;
-        //far = Camera.current.farClipPlane + 2f * forwardDist;
+        near = -forwardDist;
+
+        if (CustomCameraFarDistance)
+        {
+            far = CameraFarDistance;
+        }
+        else
+        {
+            Matrix4x4 currentCameraProjectionMatrix = Camera.current.projectionMatrix;
+            far = currentCameraProjectionMatrix[2, 3] / (currentCameraProjectionMatrix[2, 2] + 1f) - 2f * forwardDist;
+        }
     }
 
     private void SetProjectionMatrix(float l, float r, float b, float t, float n, float f)
@@ -417,41 +471,8 @@ public class MirrorGlass : MonoBehaviour
         MirrorCamera.farClipPlane = f;
     }
 
-    private void CalculateAndSetProjectionMatrix(in Vector3 mirrorCameraGlobalPositionBehindView)
-    {
-        CalculateProjectionMatrixParameters(mirrorCameraGlobalPositionBehindView, out var left, out var right, out var top, out var bot, out var near, out var far);
-        SetProjectionMatrix(left, right, bot, top, near, far);
-    }
 
-    private void CalculateAndSetProjectionMatrixAndRenderCamera(in Vector3 mirrorCameraGlobalPositionBehindView)
-    {
-        CalculateAndSetProjectionMatrix(mirrorCameraGlobalPositionBehindView);
-
-        Camera currentCamera = Camera.current;
-
-        if (!_mirrorGlassRenderInfosPerCamera.ContainsKey(currentCamera)) _mirrorGlassRenderInfosPerCamera[currentCamera] = new List<MirrorGlassRenderInfo>();
-        MirrorGlassRenderInfo mirrorGlassInfo = new MirrorGlassRenderInfo(RenderingSurfaceTransform);
-        _mirrorGlassRenderInfosPerCamera[currentCamera].Add(mirrorGlassInfo);
-
-
-        RenderTexture texture = FindOrGenerateTexture();
-        if (MirrorCamera.targetTexture != texture) MirrorCamera.targetTexture = texture;
-        InvokePreRenderEvents(MirrorCamera);
-
-        RenderingSurfaceTransform.localPosition = _originalLocalPosition;
-        RenderingSurfaceTransform.localScale = _originalLocalScale;
-
-        _mirrorCameras[MirrorCamera].Use();
-        MirrorCamera.Render();
-        _mirrorCameras[MirrorCamera].UnUse();
-
-        var usageAndTime = _renderTexturesBeingUsed[texture];
-        usageAndTime.Use();
-        mirrorGlassInfo.SetTexture(MirrorGlassRenderer.sharedMaterial, texture, usageAndTime);
-    }
-
-
-    #endregion Smaller camera render functions
+    #endregion Render functions
 
 
 
@@ -586,6 +607,7 @@ public class MirrorGlass : MonoBehaviour
 
 
     #region UsageAndTimeRelated
+
     protected class UsageAndTime
     {
         private bool _used;
@@ -621,7 +643,7 @@ public class MirrorGlass : MonoBehaviour
         {
             yield return new WaitForSecondsRealtime(usageAndTime.TimeRemaining);
             yield return new WaitForEndOfFrame();
-            if (usageAndTime.CheckIfTimesUp) //in case its has been postponed
+            if (usageAndTime.CheckIfTimesUp) //in case it has been postponed
             {
                 _renderTexturesBeingUsed.Remove(texture);
                 Destroy(texture);
@@ -637,7 +659,7 @@ public class MirrorGlass : MonoBehaviour
         {
             yield return new WaitForSecondsRealtime(usageAndTime.TimeRemaining);
             yield return new WaitForEndOfFrame();
-            if (usageAndTime.CheckIfTimesUp) //in case its has been postponed
+            if (usageAndTime.CheckIfTimesUp) //in case it has been postponed
             {
                 _mirrorCameras.Remove(camera);
                 _mirrorGlassRenderInfosPerCamera.Remove(camera);
@@ -750,15 +772,42 @@ public class MirrorGlass : MonoBehaviour
 
 
 
+#if UNITY_EDITOR
     #region Inspector Editor
 
     [UnityEditor.CustomEditor(typeof(MirrorGlass), true), UnityEditor.CanEditMultipleObjects]
     private class MirrorGlassEditor : UnityEditor.Editor
     {
+        private UnityEditor.SerializedProperty CameraFarDistanceProperty;
+        private MirrorGlass thisMirrorGlass;
+
+        protected void OnEnable()
+        {
+            CameraFarDistanceProperty = serializedObject.FindProperty(nameof(CameraFarDistance));
+            if (targets.Length == 1) thisMirrorGlass = (MirrorGlass)target;
+        }
+
         public override void OnInspectorGUI()
         {
             base.OnInspectorGUI();
-            MaximumRecursions = UnityEditor.EditorGUILayout.IntField("Maximum recursions of reflection", MaximumRecursions);
+
+            if (targets.Length > 1 || thisMirrorGlass.CustomCameraFarDistance)
+            {
+                serializedObject.Update();
+                UnityEditor.EditorGUILayout.PropertyField(CameraFarDistanceProperty);
+                serializedObject.ApplyModifiedProperties();
+            }
+
+            if (!Application.isPlaying)
+            {
+                UnityEditor.EditorGUI.BeginDisabledGroup(true);
+                MaximumRecursions = UnityEditor.EditorGUILayout.IntField("Maximum recursions of reflection (Can only be edited at run time, otherwise through script)", MaximumRecursions);
+                UnityEditor.EditorGUI.EndDisabledGroup();
+            }
+            else
+            {
+                MaximumRecursions = UnityEditor.EditorGUILayout.IntField("Maximum recursions of reflection", MaximumRecursions);
+            }
         }
     }
 
@@ -782,7 +831,7 @@ public class MirrorGlass : MonoBehaviour
     }
 
     #endregion Inspector Editor
-
+#endif
 
 
 }

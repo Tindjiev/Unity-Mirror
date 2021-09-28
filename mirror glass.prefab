@@ -85,7 +85,7 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 4.5
+  near clip plane: 4
   far clip plane: 100
   field of view: 12.9
   orthographic: 0
@@ -148,7 +148,7 @@ BoxCollider:
   m_Enabled: 1
   serializedVersion: 2
   m_Size: {x: 1, y: 1, z: 1}
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Center: {x: 0, y: 0, z: -0.5}
 --- !u!1 &6218369720218243645
 GameObject:
   m_ObjectHideFlags: 0
@@ -162,7 +162,7 @@ GameObject:
   - component: {fileID: 4981021482193690136}
   - component: {fileID: 2106510247757101768}
   m_Layer: 31
-  m_Name: glass render
+  m_Name: glass renderer
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -189,7 +189,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6218369720218243645}
-  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+  m_Mesh: {fileID: 490774553129023254, guid: d69ba73dc916333428a8a865c7fbfa92, type: 3}
 --- !u!23 &4981021482193690136
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -246,11 +246,16 @@ MonoBehaviour:
   <MirrorCamera>k__BackingField: {fileID: 835666407916162137}
   <RenderingSurfaceTransform>k__BackingField: {fileID: 835666407487694146}
   <MirrorGlassRenderer>k__BackingField: {fileID: 4981021482193690136}
+  _mirrorShader: {fileID: 4800000, guid: 31e7b8cc0421ec64f996c3ed85f979ad, type: 3}
+  _noReflectionMaterial: {fileID: 0}
+  _noReflectionShader: {fileID: 4800000, guid: da4f714a95ccabf48b2267597bb59cee, type: 3}
   <XPixels>k__BackingField: 1920
   <YPixels>k__BackingField: 1080
   StopRenderWhenNotViewed: 1
   StopRenderWhenPlayerCamIsBehind: 1
   ShrinkWhenPlayerCamGetsClose: 1
+  CustomCameraFarDistance: 0
+  CameraFarDistance: 100
 --- !u!1 &8544073436668826193
 GameObject:
   m_ObjectHideFlags: 0
